@@ -380,3 +380,66 @@ a proven battery socket:
 - Tools failing in ways this guide does not explain? Ask the user to run
   `uvx solidworks-mcp --selftest` with SolidWorks open: it shows which tool
   areas work on their installation and ends with where to report it.
+
+
+
+
+
+
+
+
+## Techne tools (0.21.0)
+
+Techne adds 52 tools to the base set. Use these before falling back to `run_api_script`.
+
+### Reach anything in SolidWorks
+- `api_lookup("FeatureExtrusion3")` / `api_lookup("swEndCond")`: exact member names, argument names and enum values from this SolidWorks' own type library. Never guess an API name.
+- `get_feature(name)` reads any feature's full definition. `modify_feature(name, values={...}, calls=[{"method": "SetDepth", "args": [true, "25mm"]}])` edits it in place, which is the native Edit Feature. Values take units ("12mm", "5deg") and enum names.
+- `create_feature("swFmCurvePattern", calls=[...], values={...}, select=[{... "mark": n}])` creates any native feature through its definition object.
+- `call_api(target, member, args)` calls any API member. COM results come back as handles you can keep calling.
+
+### Work safely and fast
+- `checkpoint` before a risky sequence, then `restore_checkpoint` to undo it.
+- `run_recipe` runs many steps in one call and rolls back on failure.
+- `rollback(before=...)` inserts features mid-history; `rollback()` rolls forward again.
+- `name_entity("Bore_Face", {"face": "#7"})` makes later selections survive rebuilds: use `{"named": "Bore_Face"}`.
+- `rebuild_report` names every failing feature with SolidWorks' error code.
+- `watch_changes` shows what the user changed by hand, through the Techne add-in's journal. Call it at the start of a turn.
+- `doc_settings(units="mmgs", standard="ansi")`: the default template on this machine is inches (IPS). Set mm before drawings.
+
+### Model
+- **Sketches:** `sketch_entities` draws circles, slots, polygons, ellipses, equation curves, construction geometry and several loops in one sketch. Add `sketch_relation`, `sketch_dimension` and `sketch_fully_define`. `sketch_from_edges` does Convert or Offset Entities. `add_3d_sketch` handles routes and `sketch_picture` adds scaled reference images.
+- **Extrude:** `extrude` covers every end condition, both directions, draft and thin walls.
+- **Revolve and sweep:**
+  - `revolve(cut=true)` makes grooves.
+  - `sweep` runs along 3D sketches, helixes or XYZ curves, or uses a circular profile.
+  - `add_helix` + `sweep(circular_diameter_mm=…)` makes springs.
+- **Other features:** `add_draft`, `add_axis`, `add_coordinate_system`, `curve_xyz`, `scale_body`.
+- **Analysis preparation:** `split_line(sketch, faces)` projects a sketch onto faces so a washer patch or load footprint becomes its own face. It returns `face_at` specs to use in fixtures and loads.
+
+### Check
+- `measure` and `section_properties` report area, I and J in mm⁴.
+- `check_geometry` and `mass_properties_about(cs)` cover body faults and inertia.
+- `sim_static` runs FEA and returns von Mises (MPa), displacement (mm) and factor of safety. Verify against a hand calculation: a 100 N axial load on a 10×10 mm bar gives 1 MPa. Load forms (totals, model axes):
+  - `{"faces": [...], "force_n": 500}`: normal to the faces, pushing into them
+  - `{"faces": [...], "force_n": [fx, fy, fz]}`: a force in a direction, in N
+  - `{"faces": [...], "pressure_mpa": 2}`: pressure
+  - `{"acceleration_g": [0, -3, 0]}`: a body load on the whole part, such as a 3 g bump (gravity is `[0, -1, 0]`)
+- `sim_static` also returns `reaction_force_n`, the total reaction on the fixtures. It should be equal and opposite to the loads; if it isn't, a load went to the wrong face or direction.
+- `sim_frequency` returns the natural frequencies (Hz). `sim_list` and `sim_delete` handle housekeeping. The Simulation add-in loads itself if it is off.
+
+### Topology optimization loop
+1. Model the design space: the envelope the part may occupy, with mounting and load faces as real faces. Use `split_line` for washer and contact patches.
+2. Pick the material first. SolidWorks' `6061 Alloy` is annealed (55 MPa yield); use `6061-T6 (SS)` for T6.
+3. Call `topology_study`:
+   - fixtures on the mounting faces, loads on the load faces. Faces that carry fixtures or loads stay solid unless `preserve_load_faces=false`; `preserved` adds more faces, with an optional depth.
+   - goal and limits:
+     - `stiffness` (default) with `mass_reduction_percent`, 50 % if not given, or `max_mass_kg`
+     - `min_mass` with a limit to hold: `max_displacement_mm`, `max_stress_mpa`, `min_factor_of_safety` or `min_frequency_hz`
+   - `max_stress_mpa` is set as the equal factor-of-safety limit (yield ÷ limit), so it must be below the yield strength
+   - manufacturing: `min_thickness_mm` (printer or machining minimum), `symmetry` (`half` takes 1 plane, `quarter` 2, `eighth` 3), `demold` (needs `edge`, a straight edge along the pull direction, e.g. `{"edge_at": [x, y, z]}`; `two_direction` may add a central `plane`)
+   - an existing study name gets a `_2` suffix; `replace=true` takes the name over
+4. It runs as a background job. Poll `job_status(job)`; SolidWorks is busy until it finishes. `topology_sweep(mass_reductions=[30, 50, 70])` runs several targets in one job.
+5. Call `topology_views(study)`. Each PNG is zoomed onto the part's bounding box and lists which model axes point right and up on screen; the caption gives the kept mass. Read the images.
+6. Build a clean parametric part that follows the load paths (sketch, extrude, loft, fillet), with globals for its key sizes.
+7. Call `topology_verify(study)` on the new part. It re-runs the recorded fixtures, loads, material and limits as a static study and reports each check (stress, FoS, displacement, frequency, mass target) as pass or fail. Iterate until all pass.

@@ -9,6 +9,7 @@ rather than getting an opaque stack trace.
 import argparse
 import asyncio
 import sys
+import time
 from importlib import resources
 
 from mcp.server.fastmcp import FastMCP
@@ -48,6 +49,8 @@ Pitfalls
 - add_mirror needs its plane where the copies land in material: add_box spans x 0..w, so mirror about offset_mm = w / 2, not x = 0.
 - SolidWorks' memory grows in long sessions: on a low-memory warning, save and restart SolidWorks (never during a run).
 
+Techne tools (0.21.0) reach the rest of SolidWorks: api_lookup / get_feature / modify_feature / create_feature / call_api for any native feature or API call; sketch_entities, extrude, revolve, sweep, add_helix for full modelling; checkpoint, run_recipe, rebuild_report, watch_changes for safe fast work; measure, section_properties, sim_static and topology_study (background job, then topology_views) to check and optimize. Prefer them to run_api_script.
+
 Read the resource solidworks://guide for the full guide: recipes (holes, ribs, threads, patterns, assemblies), 3D printing, and reverse-engineering a part from a mesh.
 """
 
@@ -81,14 +84,18 @@ if sys.platform == "win32":
 
     from .com_worker import ComWorker
     from .session import SolidWorksSession
+    from . import api_script as _api_script
 
     _worker = ComWorker()
     _session = SolidWorksSession()
     _COM_ERROR = pythoncom.com_error
+    from .ext_core import log_call as _log_call
 else:
     _worker = None
     _session = _NoSolidWorks()
+    _api_script = None
     _COM_ERROR = ()  # an empty tuple matches no exception
+    _log_call = None
 
 
 async def _call(fn, *args, **kwargs) -> dict:
@@ -96,12 +103,17 @@ async def _call(fn, *args, **kwargs) -> dict:
 
     It runs guarded: a call that fails leaves the current part as it was.
     """
+    start = time.perf_counter()
     try:
         if _worker is None:
-            return fn(*args, **kwargs)
-        return await _worker.call(lambda: _session.run_guarded(fn, *args, **kwargs))
+            result = fn(*args, **kwargs)
+        else:
+            result = await _worker.call(lambda: _session.run_guarded(fn, *args, **kwargs))
     except Exception as exc:  # noqa: BLE001 - never leak a stack trace to the agent
-        return _failure(exc)
+        result = _failure(exc)
+    if _log_call is not None:
+        _log_call(getattr(fn, "__name__", "?"), result, (time.perf_counter() - start) * 1000.0)
+    return result
 
 
 async def _call_without_solidworks(fn, *args) -> dict:
@@ -1293,6 +1305,35 @@ async def swept_region(component: str, dimension: str, values: list, heights_mm:
 async def get_assembly_bounding_box() -> dict:
     """Get the bounding box of the whole assembly (min/max/size in mm)."""
     return await _call(_session.get_assembly_bounding_box)
+
+
+@mcp.tool()
+async def run_api_script(code: str) -> dict:
+    """Run Python against the live SolidWorks API (local extension, 0.21.0).
+
+    For anything the fixed tools cannot do -- drawings (views, section and
+    auxiliary views, dimensions, notes, sheet size/scale, display styles),
+    or any other SolidWorks API call. Runs on the server's COM thread.
+    Script names: sw (ISldWorks), mod (wrapper module: mod.IModelDoc2,
+    mod.IDrawingDoc, mod.IView, ...), wrap(obj, mod.IX), doc (active
+    IModelDoc2), drw (IDrawingDoc if a drawing is active), ext (its
+    IModelDocExtension), session, IN = 0.0254 (API lengths are metres),
+    sel(name, typ, x, y, z, append, mark) = SelectByID2, views() = {name: IView}
+    on the current sheet, VARIANT, pythoncom, math, os, json, time.
+    print() output comes back in 'stdout'; set `result` to return a value.
+    Not rolled back on failure: check the result and fix forward.
+    """
+    try:
+        if _worker is None:
+            return _api_script.run(_session, code)
+        return await _worker.call(lambda: _api_script.run(_session, code))
+    except Exception as exc:  # noqa: BLE001
+        return _failure(exc)
+
+
+if sys.platform == "win32":  # Techne tools: they need pywin32, so Windows only
+    from . import ext_server as _ext_server
+    _ext_server.register(mcp, _call, _session, _worker, _failure)
 
 
 def main() -> None:

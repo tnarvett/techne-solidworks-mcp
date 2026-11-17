@@ -3,6 +3,30 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.21.0] — 2026-11-16 (Techne)
+
+First release of the Techne extension, published as
+[tnarvett/techne-solidworks-mcp](https://github.com/tnarvett/techne-solidworks-mcp).
+
+### Added
+- 53 tools on top of the original 88 (141 in total): `run_api_script` and
+  `call_api` for any SolidWorks API call; native sketching with relations and
+  dimensions; extrude, revolve, sweep, helix, draft, axis, coordinate system,
+  split line and scale; checkpoints, rollback and rebuild reports; Simulation
+  static and frequency studies; topology optimization as background jobs with
+  verification; mesh import. See the README for the full list.
+- The Techne SolidWorks add-in (`addin/Techne`), which journals document events
+  for `watch_changes`.
+- `install.ps1` / `uninstall.ps1`: build and register the add-in, install uv,
+  build the wheel and point every Claude Desktop config at it (with backups).
+- `build_wheel.py` (standard library only) and offline tests in
+  `techne_tests/offline`.
+
+### Changed
+- New dependency: `comtypes` (Windows) for the Simulation interfaces.
+- The PyPI / MCP Registry publish workflow is replaced by a test workflow;
+  this fork is installed from the repo, not from PyPI.
+
 ## [0.20.0] — 2026-11-13
 
 ### Changed

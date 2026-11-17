@@ -24,3 +24,17 @@ Thumbs.db
 
 # Claude Code local machine overrides (keep shared settings.json if added)
 .claude/settings.local.json
+
+# Techne build and run output
+*.whl
+*.zip
+addin/bin/
+install.log
+techne_tests/live/*.json
+techne_tests/live/*.log
+techne_tests/live/vendor/
+techne_tests/live/topo_views/
+*.SLDPRT
+*.SLDASM
+*.SLDDRW
+~$*

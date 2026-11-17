@@ -1,0 +1,19 @@
+# Unit tests on every push and pull request. The runner has no SolidWorks, so
+# tests marked "solidworks" are skipped; the Techne offline tests stub COM.
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Build the wheel (checked by techne_tests/offline/test_wheel_import.py)
+        run: uv run --no-project python build_wheel.py
+      - name: Unit tests
+        run: uv run --extra dev pytest -m "not solidworks"
