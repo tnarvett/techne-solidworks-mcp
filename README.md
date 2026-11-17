@@ -83,7 +83,8 @@ The server's built-in guide (`solidworks://guide`) explains the conventions to t
 
 ```powershell
 uv run --no-project python build_wheel.py      # build solidworks_mcp-<version>-py3-none-any.whl from src\
-uv run --extra dev pytest -m "not solidworks"  # unit tests (no SolidWorks needed)
+uv run --extra dev pytest -m "not solidworks"  # original server's unit tests (no SolidWorks needed)
+uv run --extra dev pytest techne_tests/offline  # Techne tests; run separately, they stub the Windows modules
 ```
 
 - **Source:** `src/solidworks_mcp/`. The Techne modules are `ext_*.py` and `api_script.py`; the rest is the original server.

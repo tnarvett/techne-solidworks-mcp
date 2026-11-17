@@ -15,5 +15,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Build the wheel (checked by techne_tests/offline/test_wheel_import.py)
         run: uv run --no-project python build_wheel.py
-      - name: Unit tests
+      - name: Unit tests (original server)
         run: uv run --extra dev pytest -m "not solidworks"
+      # separate process: these stub the Windows modules, which must not leak into the tests above
+      - name: Techne offline tests
+        run: uv run --extra dev pytest techne_tests/offline

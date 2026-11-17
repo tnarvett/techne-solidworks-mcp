@@ -48,7 +48,7 @@ where = ["src"]
 solidworks_mcp = ["guide.md", "material_ids.json"]  # the guide resource; English material ids
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "techne_tests/offline"]
+testpaths = ["tests"]
 markers = [
     "solidworks: integration test that needs a running SolidWorks instance",
 ]
