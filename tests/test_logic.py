@@ -641,9 +641,11 @@ def _tool_delegations():
     for node in ast.parse(source).body:
         if not isinstance(node, ast.AsyncFunctionDef) or not node.decorator_list:
             continue
-        call = next(n for n in ast.walk(node)
-                    if isinstance(n, ast.Call)
-                    and getattr(n.func, "id", None) in ("_call", "_call_without_solidworks"))
+        call = next((n for n in ast.walk(node)
+                     if isinstance(n, ast.Call)
+                     and getattr(n.func, "id", None) in ("_call", "_call_without_solidworks")), None)
+        if call is None:  # run_api_script runs its own code on the COM thread, not a session method
+            continue
         target, *passed = call.args
         yield (node.name,
                [a.arg for a in node.args.args],
